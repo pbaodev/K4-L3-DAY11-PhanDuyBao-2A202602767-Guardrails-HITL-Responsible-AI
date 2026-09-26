@@ -120,6 +120,24 @@ _EXTRA_ALLOWED_TOPICS = [
     "exchange rate", "rut tien", "nop tien",
 ]
 
+# Small talk has no security surface, but with no banking keyword it would
+# otherwise be flagged as off-topic — a jarring first reply for a real
+# customer bot ("Xin chào" -> "Sorry, I only help with banking"). Only an
+# exact greeting/pleasantry (nothing else attached) is exempt: the
+# BLOCKED_TOPICS check runs first, so "hi, how do I hack an account" is
+# still blocked there, not by this bypass.
+_GREETING_ONLY_RE = re.compile(
+    r"^(?:"
+    r"hi|hello|hey|yo|"
+    r"good\s*(?:morning|afternoon|evening|day)|"
+    r"how\s*are\s*you|"
+    r"xin\s*chao|"
+    r"chao(?:\s*(?:ban|anh|chi|em|moi\s*nguoi))?|"
+    r"cam\s*on(?:\s*(?:ban|nhieu|rat|qua|nha)){0,3}|thank\s*you|thanks|"
+    r"tam\s*biet|bye|goodbye"
+    r")[\s!.,?]*$"
+)
+
 
 def _mentions(text: str, keyword: str) -> bool:
     """Word-start match: "hack" catches "hacking" but "kill" does not fire on "skill"."""
@@ -141,6 +159,8 @@ def topic_filter(user_input: str) -> InputStatus:
 
     if any(_mentions(input_lower, topic) for topic in BLOCKED_TOPICS):
         return "BLOCK"
+    if _GREETING_ONLY_RE.match(input_lower):
+        return "ALLOW"
     allowed = ALLOWED_TOPICS + _EXTRA_ALLOWED_TOPICS
     if not any(_mentions(input_lower, topic) for topic in allowed):
         return "BLOCK"
