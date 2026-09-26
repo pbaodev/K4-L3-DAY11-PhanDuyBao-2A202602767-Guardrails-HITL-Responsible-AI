@@ -1,8 +1,13 @@
 # Day 11 — Controlled Agent Security (2026)
 
+> **Họ tên:** Phan Duy Bao *(chỉnh lại dấu tiếng Việt nếu cần)* · **MSSV:** 2A202602767
+> **Chạy nhanh:** xem [Cách bắt đầu](#3-cách-bắt-đầu) bên dưới; tóm tắt kết quả đã chạy ở [`outputs/lab_report.md`](outputs/lab_report.md) (tự sinh bởi `scripts/grade.py`).
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** xây **Blue** (phòng thủ), rồi red-team **Red** + **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).
+
+> ⚠️ **Ghi chú bài nộp — model Blue:** ngày 26/09/2026 OpenRouter không còn endpoint cho `liquid/lfm-2.5-2.6b` (API trả `404 No endpoints found`), chỉ còn biến thể miễn phí `liquid/lfm-2.5-2.6b:free` của **cùng model**. Vì vậy `BLUE_MODEL` trong [`src/core/config.py`](src/core/config.py) được đổi sang `liquid/lfm-2.5-2.6b:free` — không dùng model nào khác.
 
 ---
 

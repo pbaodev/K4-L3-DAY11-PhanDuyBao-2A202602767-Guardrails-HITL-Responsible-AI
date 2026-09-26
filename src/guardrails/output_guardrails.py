@@ -6,13 +6,40 @@ Checkpoint 2 — Output Guardrails
 """
 import re
 import textwrap
+import unicodedata
 
 from google.genai import types
 from google.adk.agents import llm_agent
 from google.adk import runners
 from google.adk.plugins import base_plugin
 
+from core.config import DEMO_SECRETS
 from core.utils import chat_with_agent
+
+BLOCKED_RESPONSE = (
+    "Sorry, I can't share that information. "
+    "Is there anything else I can help you with on your VinBank account?"
+)
+
+
+def _strip_invisible(text: str) -> str:
+    """NFKC + drop zero-width/format chars (category Cf) so they cannot split a secret."""
+    normalized = unicodedata.normalize("NFKC", text or "")
+    return "".join(ch for ch in normalized if unicodedata.category(ch) != "Cf")
+
+
+def _contains_protected_secret(text: str) -> bool:
+    """Catch obfuscated leaks the regexes miss ("a d m i n 1 2 3", "s.k-vinbank…").
+
+    Compares alphanumerics only against the protected values in
+    data/protected/vinbank_secrets.json (the same idea as canary tokens).
+    """
+    squashed = re.sub(r"[^a-z0-9]", "", _strip_invisible(text).casefold())
+    for secret in DEMO_SECRETS:
+        needle = re.sub(r"[^a-z0-9]", "", secret.casefold())
+        if needle and needle in squashed:
+            return True
+    return False
 
 
 # ============================================================
@@ -37,23 +64,38 @@ def content_filter(response: str) -> dict:
         dict with 'safe', 'issues', and 'redacted' keys
     """
     issues = []
-    redacted = response
+    # Zero-width chars removed first so "sk-​vinbank…" is still matched
+    redacted = _strip_invisible(response)
 
-    # PII patterns to check
+    # PII patterns to check — secrets first, then generic PII.
+    # Issue names follow data/pii_hallucination_samples.json.
     PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+        "api_key": r"\bsk-[A-Za-z0-9_-]{6,}",
+        # "password=x1", "password: x1", "password is x1", "mật khẩu là x1".
+        # The value must contain a digit, so "your password is confidential" stays.
+        "password": r"\b(?:password|passwd|pwd|mật\s*khẩu)\s*(?:is|là|[:=])\s*[^\s,;]*\d[^\s,;]*",
+        "internal_host": r"\b[\w-]+(?:\.[\w-]+)*\.internal(?::\d+)?\b",
+        "email": r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}",
+        # CCCD = 12 digits. Old CMND = 9 digits, only right after an ID keyword,
+        # because a bare 9-digit number is usually a VND amount.
+        "national_id": r"(?<!\d)\d{12}(?!\d)|\b(?:cccd|cmnd|căn\s*cước|chứng\s*minh)\D{0,15}\d{9}(?!\d)",
+        # VN phone: 0 + 9–10 digits (mobile / 02x landline) or +84 + 9 digits,
+        # optional space/dot/dash. Public hotlines (1900 …) are not PII.
+        "phone": r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9,10}(?!\d)",
     }
+    if DEMO_SECRETS:
+        # Exact protected values, even without a "password is" prefix
+        PII_PATTERNS["protected_secret"] = "|".join(re.escape(s) for s in DEMO_SECRETS)
 
     for name, pattern in PII_PATTERNS.items():
-        matches = re.findall(pattern, response, re.IGNORECASE)
+        # Match on the already-redacted text so one value is not counted twice
+        matches = re.findall(pattern, redacted, re.IGNORECASE)
         if matches:
             issues.append(f"{name}: {len(matches)} found")
             redacted = re.sub(pattern, "[REDACTED]", redacted, flags=re.IGNORECASE)
+
+    if _contains_protected_secret(redacted):
+        issues.append("protected_secret: obfuscated form found")
 
     return {
         "safe": len(issues) == 0,
@@ -172,16 +214,28 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        result = content_filter(response_text)
+        if not result["safe"]:
+            if _contains_protected_secret(result["redacted"]):
+                # A secret survived redaction in an obfuscated form -> fail closed
+                self.blocked_count += 1
+                safe_text = BLOCKED_RESPONSE
+            else:
+                self.redacted_count += 1
+                safe_text = result["redacted"]
+            llm_response.content = types.Content(
+                role="model", parts=[types.Part.from_text(text=safe_text)]
+            )
 
-        return llm_response  # TODO: modify if needed
+        if self.use_llm_judge:
+            verdict = await llm_safety_check(response_text)
+            if not verdict["safe"]:
+                self.blocked_count += 1
+                llm_response.content = types.Content(
+                    role="model", parts=[types.Part.from_text(text=BLOCKED_RESPONSE)]
+                )
+
+        return llm_response
 
 
 # ============================================================

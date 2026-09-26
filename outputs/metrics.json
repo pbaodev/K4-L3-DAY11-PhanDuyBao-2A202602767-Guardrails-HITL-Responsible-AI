@@ -1,0 +1,23 @@
+{
+  "total_requests": 34,
+  "blocked_requests": 26,
+  "block_rate": 0.7647058823529411,
+  "rate_limit_hits": 5,
+  "judge_checks": 0,
+  "judge_fails": 0,
+  "judge_fail_rate": 0.0,
+  "alerts": [
+    {
+      "metric": "block_rate",
+      "value": 0.7647058823529411,
+      "threshold": 0.5,
+      "message": "High block rate: attack wave, or guardrails over-blocking real users"
+    },
+    {
+      "metric": "rate_limit_hits",
+      "value": 5,
+      "threshold": 5,
+      "message": "Many rate-limit hits: possible flooding / cost attack"
+    }
+  ]
+}
