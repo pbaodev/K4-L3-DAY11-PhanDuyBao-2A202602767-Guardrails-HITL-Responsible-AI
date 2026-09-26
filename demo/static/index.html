@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VinBank Blue — Live Defense Demo</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121b2e;
+    --panel-2: #182338;
+    --border: #26334d;
+    --text: #e7edf7;
+    --muted: #8a97b3;
+    --brand: #5b9dff;
+    --green: #35d08a;
+    --amber: #f5b942;
+    --red: #ff5470;
+    --red-strong: #ff2d55;
+    --mono: "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  header h1 { font-size: 22px; margin: 0; display: flex; align-items: center; gap: 10px; }
+  header h1 .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 12px var(--brand); }
+  header .model { color: var(--muted); font-size: 13px; font-family: var(--mono); }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+  /* Pipeline diagram */
+  .pipeline { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
+  .stage {
+    flex: 1 1 0; min-width: 160px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 14px 12px;
+  }
+  .stage .icon { font-size: 20px; }
+  .stage .title { font-weight: 600; font-size: 13.5px; margin: 6px 0 4px; }
+  .stage .why { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  .arrow { display: flex; align-items: center; color: var(--border); font-size: 20px; }
+  .egress-note { color: var(--muted); font-size: 12px; margin: 0 0 26px; }
+  .egress-note code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+
+  /* Scoreboard */
+  .scoreboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 22px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px; text-align: center; }
+  .stat .n { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+  .stat.total .n { color: var(--text); }
+  .stat.allowed .n { color: var(--green); }
+  .stat.blocked .n { color: var(--amber); }
+  .stat.redacted .n { color: var(--brand); }
+  .stat.leaked { border-color: var(--red-strong); }
+  .stat.leaked .n { color: var(--red-strong); }
+
+  /* Console */
+  .console { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 22px; }
+  .console h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  textarea {
+    width: 100%; min-height: 76px; resize: vertical;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-family: var(--mono); font-size: 14px; padding: 12px;
+  }
+  textarea:focus { outline: none; border-color: var(--brand); }
+  .console-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; flex-wrap: wrap; }
+  .hint { color: var(--muted); font-size: 12px; }
+  button { cursor: pointer; border: none; border-radius: 9px; font-weight: 600; font-size: 14px; }
+  .send-btn { background: var(--brand); color: #08101f; padding: 10px 22px; }
+  .send-btn:disabled { opacity: .55; cursor: default; }
+  .reset-btn { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 7px 14px; font-size: 12.5px; }
+  .reset-btn:hover { color: var(--red); border-color: var(--red); }
+  .preset-group { margin-top: 14px; }
+  .preset-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    padding: 6px 12px; border-radius: 999px; font-size: 12px; max-width: 260px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chip:hover { color: var(--text); border-color: var(--brand); }
+  .chip.normal { border-color: rgba(53,208,138,.35); }
+  .chip.normal:hover { border-color: var(--green); }
+  .chip.attack { border-color: rgba(255,84,112,.35); }
+  .chip.attack:hover { border-color: var(--red); }
+
+  /* Feed */
+  .feed h2 { font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 12px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 12px;
+  }
+  .card.v-allowed { border-left-color: var(--green); }
+  .card.v-blocked { border-left-color: var(--amber); }
+  .card.v-redacted { border-left-color: var(--brand); }
+  .card.v-leaked { border-left-color: var(--red-strong); background: #1c1020; }
+  .card.v-error { border-left-color: var(--muted); }
+  .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px; }
+  .badge.v-allowed { background: rgba(53,208,138,.15); color: var(--green); }
+  .badge.v-blocked { background: rgba(245,185,66,.15); color: var(--amber); }
+  .badge.v-redacted { background: rgba(91,157,255,.15); color: var(--brand); }
+  .badge.v-leaked { background: rgba(255,45,85,.2); color: var(--red-strong); }
+  .badge.v-error { background: rgba(138,151,179,.15); color: var(--muted); }
+  .layer-tag { font-size: 11.5px; color: var(--muted); font-family: var(--mono); }
+  .elapsed { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+  .prompt, .response { font-family: var(--mono); font-size: 13px; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+  .prompt { color: var(--text); }
+  .response { color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .card.v-leaked .response { color: #ffb3c1; }
+  .row-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 3px; }
+
+  footer { color: var(--muted); font-size: 11.5px; text-align: center; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="dot"></span> VinBank Blue — Live Defense Demo</h1>
+    <span class="model" id="model-label">…</span>
+  </header>
+  <div class="subtitle">Chatbot Blue chạy model thật, qua đúng pipeline đã nộp bài — dán prompt tấn công của lớp vào bên dưới.</div>
+
+  <div class="pipeline" id="pipeline"></div>
+  <div class="egress-note">
+    + <code>is_egress_allowed()</code>: chặn dữ liệu thoát ra ngoài domain lạ / chứa secret — không nằm trong luồng chat trực tiếp này, áp dụng khi agent thực hiện một hành động (gửi đi nơi khác).
+  </div>
+
+  <div class="scoreboard">
+    <div class="stat total"><div class="n" id="c-total">0</div><div class="l">Tổng</div></div>
+    <div class="stat allowed"><div class="n" id="c-allowed">0</div><div class="l">Allowed</div></div>
+    <div class="stat blocked"><div class="n" id="c-blocked">0</div><div class="l">Blocked</div></div>
+    <div class="stat redacted"><div class="n" id="c-redacted">0</div><div class="l">Redacted</div></div>
+    <div class="stat leaked"><div class="n" id="c-leaked">0</div><div class="l">🚨 Leaked</div></div>
+  </div>
+
+  <div class="console">
+    <h2>Nhập prompt tấn công</h2>
+    <textarea id="prompt-input" placeholder="Dán prompt của lớp vào đây… (Ctrl/Cmd + Enter để gửi)"></textarea>
+    <div class="console-row">
+      <span class="hint" id="rate-limit-hint"></span>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="reset-btn" id="reset-btn">Reset demo</button>
+        <button class="send-btn" id="send-btn">🚀 Gửi tấn công</button>
+      </div>
+    </div>
+    <div id="presets"></div>
+  </div>
+
+  <div class="feed">
+    <h2>Kết quả (mới nhất trên đầu)</h2>
+    <div id="feed-list"><div class="empty">Chưa có prompt nào — gửi thử một câu ở trên.</div></div>
+  </div>
+
+  <footer>Gọi model thật (không mô phỏng) — kết quả có thể khác đôi chút giữa các lần chạy.</footer>
+</div>
+
+<script>
+const PIPELINE_STAGES = [
+  { icon: "🚦", title: "Rate Limiter", why: "Chặn spam/flood theo user — không cho tốn tiền LLM vô ích." },
+  { icon: "🛡️", title: "Input Guardrail", why: "Bắt prompt injection (đã chuẩn hoá Unicode/ký tự ẩn) + chỉ cho hỏi chủ đề ngân hàng." },
+  { icon: "🤖", title: "LLM (Blue)", why: "Model bị khoá cứng — chính sách bảo mật nằm ở code, không giao cho model tự quyết." },
+  { icon: "🔒", title: "Output Guardrail", why: "Che SĐT/email/CCCD/API key/password trước khi trả lời; chặn hẳn nếu secret vẫn còn ở dạng biến tấu." },
+];
+
+const feedList = document.getElementById("feed-list");
+const promptInput = document.getElementById("prompt-input");
+const sendBtn = document.getElementById("send-btn");
+const resetBtn = document.getElementById("reset-btn");
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function renderPipeline() {
+  const el = document.getElementById("pipeline");
+  el.innerHTML = "";
+  PIPELINE_STAGES.forEach((s, i) => {
+    if (i > 0) {
+      const arrow = document.createElement("div");
+      arrow.className = "arrow";
+      arrow.textContent = "→";
+      el.appendChild(arrow);
+    }
+    const card = document.createElement("div");
+    card.className = "stage";
+    card.innerHTML = `<div class="icon">${s.icon}</div><div class="title">${s.title}</div><div class="why">${s.why}</div>`;
+    el.appendChild(card);
+  });
+}
+
+function renderCounters(c) {
+  document.getElementById("c-total").textContent = c.total;
+  document.getElementById("c-allowed").textContent = c.allowed;
+  document.getElementById("c-blocked").textContent = c.blocked;
+  document.getElementById("c-redacted").textContent = c.redacted;
+  document.getElementById("c-leaked").textContent = c.leaked;
+}
+
+function verdictClass(v) { return "v-" + v.toLowerCase(); }
+
+function cardHtml(entry) {
+  const vc = verdictClass(entry.verdict);
+  const layer = entry.layer ? `<span class="layer-tag">layer: ${escapeHtml(entry.layer)}</span>` : "";
+  const badgeEmoji = { ALLOWED: "✅", BLOCKED: "⛔", REDACTED: "🩹", LEAKED: "🚨", ERROR: "⚠️" }[entry.verdict] || "";
+  return `
+    <div class="card ${vc}">
+      <div class="card-head">
+        <span class="badge ${vc}">${badgeEmoji} ${entry.verdict}</span>
+        ${layer}
+        <span class="elapsed">${entry.elapsed_s}s</span>
+      </div>
+      <div class="row-label">Câu hỏi</div>
+      <div class="prompt">${escapeHtml(entry.prompt)}</div>
+      <div class="row-label" style="margin-top:8px;">Trả lời</div>
+      <div class="response">${escapeHtml(entry.response)}</div>
+    </div>`;
+}
+
+function prependEntry(entry) {
+  if (feedList.querySelector(".empty")) feedList.innerHTML = "";
+  feedList.insertAdjacentHTML("afterbegin", cardHtml(entry));
+}
+
+function renderFeed(log) {
+  if (!log.length) {
+    feedList.innerHTML = '<div class="empty">Chưa có prompt nào — gửi thử một câu ở trên.</div>';
+    return;
+  }
+  feedList.innerHTML = log.map(cardHtml).join("");
+}
+
+async function loadState() {
+  const res = await fetch("/api/state");
+  const data = await res.json();
+  document.getElementById("model-label").textContent = "Blue: " + data.blue_model;
+  document.getElementById("rate-limit-hint").textContent =
+    `Rate limit: ${data.rate_limit.max_requests} câu / ${data.rate_limit.window_seconds}s (nâng cao hơn CP3 cho buổi demo)`;
+  renderCounters(data.counters);
+  renderFeed(data.log);
+  renderPresetGroups(data.preset_groups);
+}
+
+// group.label "Câu hỏi bình thường" -> chip xanh (normal); còn lại -> chip đỏ (attack)
+function renderPresetGroups(groups) {
+  const wrap = document.getElementById("presets");
+  wrap.innerHTML = "";
+  groups.forEach(group => {
+    const isNormal = group.label.toLowerCase().includes("bình thường");
+    const section = document.createElement("div");
+    section.className = "preset-group";
+    const label = document.createElement("div");
+    label.className = "preset-group-label";
+    label.textContent = (isNormal ? "✅ " : "🎯 ") + group.label;
+    section.appendChild(label);
+    const row = document.createElement("div");
+    row.className = "presets";
+    group.items.forEach(p => {
+      const chip = document.createElement("button");
+      chip.className = "chip " + (isNormal ? "normal" : "attack");
+      chip.title = p;
+      chip.textContent = p;
+      chip.onclick = () => { promptInput.value = p; promptInput.focus(); };
+      row.appendChild(chip);
+    });
+    section.appendChild(row);
+    wrap.appendChild(section);
+  });
+}
+
+async function sendAttack() {
+  const prompt = promptInput.value.trim();
+  if (!prompt) return;
+  sendBtn.disabled = true;
+  sendBtn.textContent = "⏳ Đang gửi…";
+  try {
+    const res = await fetch("/api/attack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Lỗi: " + (err.detail || res.statusText));
+      return;
+    }
+    const data = await res.json();
+    prependEntry(data.entry);
+    renderCounters(data.counters);
+    promptInput.value = "";
+  } catch (e) {
+    alert("Không gọi được server demo: " + e);
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = "🚀 Gửi tấn công";
+    promptInput.focus();
+  }
+}
+
+sendBtn.addEventListener("click", sendAttack);
+promptInput.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") sendAttack();
+});
+resetBtn.addEventListener("click", async () => {
+  if (!confirm("Xoá toàn bộ log + bộ đếm + rate limit hiện tại?")) return;
+  await fetch("/api/reset", { method: "POST" });
+  await loadState();
+});
+
+renderPipeline();
+loadState();
+</script>
+</body>
+</html>
